@@ -1,0 +1,12 @@
+{
+  "name": "skibot-plugin-obastatus",
+  "version": "0.0.1",
+  "description": "获取 OpenBMCLAPI 相关数据",
+  "author": "Dongyanmio",
+  "license": "MIT",
+  "config": {
+    "enabled": true,
+    "cookies": ""
+  },
+  "packages": []
+}
