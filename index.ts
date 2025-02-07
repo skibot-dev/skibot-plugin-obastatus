@@ -1,8 +1,8 @@
 import axios from "axios";
 
-import { Handler, Bot } from "../../dist/bot/bot.js";
-import { BotMessageEvent } from "../../dist/bot/events.js";
-import { Message, MessageSegment } from "../../dist/bot/messages.js";
+import { Handler, Bot } from "../../dist/app/bot.js";
+import { BotMessageEvent } from "../../dist/app/events.js";
+import { Message, MessageSegment } from "../../dist/app/messages.js";
 
 // 配置导入
 export let config = { cookies: "" };
