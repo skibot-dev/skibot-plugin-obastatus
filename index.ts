@@ -241,18 +241,18 @@ async function bot_command(
     bot: Bot,
     cmd: string,
     desc: string,
-    handler: Handler,
+    callback: any,
 ) {
-    bot.command(cmd, desc, async (args: Array<string>, handle: Handler, msg: Message, event: BotMessageEvent) => {
+    bot.command(cmd, desc, async (args: Array<string>, handler: Handler, msg: Message, event: BotMessageEvent) => {
         var params = new HandlerParams(
             args,
-            handle,
+            handler,
             msg,
             event
         )
         msg.addMessage(MessageSegment.reply(event.message_id));
         msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
-        await handler(params);
+        await callback(params);
         msg.addMessage(MessageSegment.text(`\n请求时间: ${new Date().toLocaleString()}`))
         handler.finish(msg);
     })
