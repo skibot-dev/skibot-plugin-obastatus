@@ -153,14 +153,47 @@ async function brrs_handle(args: Array<string>, handler: Handler, msg: Message, 
     handler.finish(msg);
 }
 
+async function buan_handle(args: Array<string>, handler: Handler, msg: Message, event: BotMessageEvent) {
+    msg.addMessage(MessageSegment.reply(event.message_id));
+    msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
+    if (args.length == 0) {
+        msg.addMessage(MessageSegment.text("缺少参数，请输入节点管理者用户名"));
+    } else {
+        const arg: string = args[0].toLowerCase();
+
+        const matches_with_index = clusterList
+            .map((data, index) => ({ index: index + 1, data }))
+            .filter(({ data }) => data.user.name.toLowerCase().includes(arg));
+
+        if (matches_with_index.length === 0) {
+            msg.addMessage(MessageSegment.text("很抱歉，未找到匹配的节点"));
+        } else {
+            let total_bytes: number = 0;
+            let total_hits: number = 0;
+            for (let i = 0; i < matches_with_index.length; i++) {
+                if (matches_with_index[i].data.metric == null) {
+                    matches_with_index[i].data.metric = {
+                        bytes: 0,
+                        hits: 0
+                    } 
+                }
+                total_bytes += matches_with_index[i].data.metric.bytes;
+                total_hits += matches_with_index[i].data.metric.hits;
+            }
+            msg.addMessage(MessageSegment.text(`所有者: ${args[0]} | 节点数量: ${matches_with_index.length}\n当日总流量: ${formatUnits(total_bytes)} | 当日请求数: ${formatCommas(total_hits)}`));
+        }
+    }
+    msg.addMessage(MessageSegment.text(`\n请求时间: ${new Date().toLocaleString()}`))
+    handler.finish(msg);
+}
+
 export function init(bot: Bot) {
     bot.command("bmcl", "查询 OpenBMCLAPI 面板数据", bmcl_handle);
     bot.command("brrs", "查询 OpenBMCLAPI 某个节点的信息", brrs_handle);
+    bot.command("buan", "查询某个用户所有节点的统计", buan_handle);
     fetchData(config.cookies);
 
     setInterval(() => {
         fetchData(config.cookies);
     }, 30000);
 }
-
-export default init;
