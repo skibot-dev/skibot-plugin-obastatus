@@ -131,3 +131,6 @@ dist
 
 # SkiBot 构建
 index.js
+
+# VS Code local history
+.lh

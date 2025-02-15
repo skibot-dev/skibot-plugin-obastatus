@@ -102,6 +102,24 @@ function simpleFormatNodeInfo(rank: number, data: any) {
     return messages.join("\n");
 }
 
+class HandlerParams {
+    args: Array<string>
+    handler: Handler
+    msg: Message
+    event: BotMessageEvent
+    constructor(
+        args: Array<string>,
+        handler: Handler,
+        msg: Message,
+        event: BotMessageEvent
+    ) {
+        this.args = args;
+        this.handler = handler;
+        this.msg = msg;
+        this.event = event;
+    }
+}
+
 async function bmcl_handle(args: Array<string>, handler: Handler, msg: Message, event: BotMessageEvent) {
     msg.addMessage(MessageSegment.reply(event.message_id));
     msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
@@ -187,10 +205,66 @@ async function buan_handle(args: Array<string>, handler: Handler, msg: Message, 
     handler.finish(msg);
 }
 
+async function burank_handle(params: HandlerParams) {
+    let data: {
+        [username: string]: {
+            bytes: number;
+            hits: number;
+            count: number
+        }
+    } = {}
+    for (let cluster of clusterList) {
+        let username = cluster.user.name;
+        let metric = cluster.metric || {
+            bytes: 0,
+            hits: 0
+        }
+        if (data[username] == null) {
+            data[username] = {
+                bytes: 0,
+                hits: 0,
+                count: 0
+            }
+        }
+        data[username].bytes += metric.bytes;
+        data[username].hits += metric.hits;
+        data[username].count += 1;
+    }
+    Object.entries(data).sort((a, b) => b[1].bytes - a[1].bytes).forEach((([user, metric]) => {
+        params.msg.addMessage(MessageSegment.text(`所有者: ${user} | 节点数量: ${metric.count}\n当日总流量: ${formatUnits(metric.bytes)} | 当日请求数: ${formatCommas(metric.hits)}`));
+    }))
+
+
+}
+
+async function bot_command(
+    bot: Bot,
+    cmd: string,
+    desc: string,
+    handler: Handler,
+) {
+    bot.command(cmd, desc, async (args: Array<string>, handle: Handler, msg: Message, event: BotMessageEvent) => {
+        var params = new HandlerParams(
+            args,
+            handle,
+            msg,
+            event
+        )
+        msg.addMessage(MessageSegment.reply(event.message_id));
+        msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
+        await handler(params);
+        msg.addMessage(MessageSegment.text(`\n请求时间: ${new Date().toLocaleString()}`))
+        handler.finish(msg);
+    })
+}
+
 export function init(bot: Bot) {
     bot.command("bmcl", "查询 OpenBMCLAPI 面板数据", bmcl_handle);
     bot.command("brrs", "查询 OpenBMCLAPI 某个节点的信息", brrs_handle);
     bot.command("buan", "查询某个用户所有节点的统计", buan_handle);
+
+    bot_command(bot, "burank", "查询 OpenBMCLAPI 某个用户节点排行的信息", burank_handle)
+
     fetchData(config.cookies);
 
     setInterval(() => {
