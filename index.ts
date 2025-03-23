@@ -1,8 +1,8 @@
 import axios from "axios";
 
-import { Handler, Bot } from "../../dist/app/bot.js";
+import { HandlerClass, Bot } from "../../dist/app/bot.js";
 import { BotMessageEvent } from "../../dist/app/events.js";
-import { Message, MessageSegment } from "../../dist/app/messages.js";
+import { MessageClass, MessageSegment } from "../../dist/app/messages.js";
 
 // 配置导入
 export let config = { cookies: "" };
@@ -15,6 +15,7 @@ let dashboard: any = {}
 let clusterList: any[] = []
 let commitID: string = "";
 let latestVersion: string = "";
+let requestTime: Date;
 
 function formatCommas(num: number): string {
     return num.toLocaleString();
@@ -49,7 +50,7 @@ async function fetchData(cookies: string) {
     } catch (error) {
         console.error("Error fetching data:", error);
     }
-    
+
     try {
         const response = await fetch("https://bd.bangbang93.com/openbmclapi/metric/rank", {
             method: "GET",
@@ -72,6 +73,8 @@ async function fetchData(cookies: string) {
     } catch (error) {
         console.error("Error fetching data:", error);
     }
+
+    requestTime = new Date()
 }
 
 function formatNodeInfo(rank: number, data: any) {
@@ -98,47 +101,62 @@ function simpleFormatNodeInfo(rank: number, data: any) {
             hits: 0
         }
     }
-    messages.push(`${data.isEnabled? "✅" : "❌"} | ${rank} | ${data.name} | ${formatUnits(data.metric.bytes)} | ${formatCommas(data.metric.hits)}`);
+    messages.push(`${data.isEnabled ? "✅" : "❌"} | ${rank} | ${data.name} | ${formatUnits(data.metric.bytes)} | ${formatCommas(data.metric.hits)}`);
     return messages.join("\n");
 }
 
-async function bmcl_handle(args: Array<string>, handler: Handler, msg: Message, event: BotMessageEvent) {
+// 统计节点总数居
+function summaryNode(rank: number[], data: any[]) {
+    let total_bytes: number = 0;
+    let total_hits: number = 0;
+    for (let i = 0; i < rank.length; i++) {
+        if (data[i].metric == null) {
+            data[i].metric = {
+                bytes: 0,
+                hits: 0
+            }
+        }
+        total_bytes += data[i].metric.bytes;
+        total_hits += data[i].metric.hits;
+    }
+
+    return { total_bytes, total_hits }
+}
+
+async function bmcl_handle(args: Array<string>, handler: HandlerClass, msg: MessageClass, event: BotMessageEvent) {
     msg.addMessage(MessageSegment.reply(event.message_id));
-    msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
+    msg.addMessage(MessageSegment.text("OBA Status Bot v1.0.1\n"));
     msg.addMessage(MessageSegment.text(`官方版本: ${latestVersion} | 提交 ID: 22cbee0
 在线节点数: ${dashboard.currentNodes} 个 | 负载: ${(dashboard.load * 100).toFixed(2)}%
 总带宽: ${dashboard.bandwidth}Mbps | 出网带宽: ${dashboard.currentBandwidth.toFixed(2)}Mbps
 当日请求: ${formatCommas(dashboard.hits)} 次 | 数据量: ${formatUnits(dashboard.bytes)}
-请求时间: ${new Date().toLocaleString()}
+请求时间: ${requestTime.toLocaleString()}
 数据源: https://bd.bangbang93.com/pages/dashboard`))
     handler.finish(msg);
 }
 
-async function brrs_handle(args: Array<string>, handler: Handler, msg: Message, event: BotMessageEvent) {
+async function brrs_handle(args: Array<string>, handler: HandlerClass, msg: MessageClass, event: BotMessageEvent) {
     msg.addMessage(MessageSegment.reply(event.message_id));
-    msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
+    msg.addMessage(MessageSegment.text("OBA Status Bot v1.0.1\n"));
     if (args.length == 0) {
         msg.addMessage(MessageSegment.text("缺少参数，请输入要查询节点的关键词"));
     } else {
         const arg: string = args[0].toLowerCase();
-        let matches_with_index: any[] = [];
 
-        for (let i = 0; i < clusterList.length; i++) {
-            if (clusterList[i].name.toLowerCase().includes(arg)) {
-                matches_with_index.push({ index: i + 1, data: clusterList[i] });
-            }
-        }
+        const matches_with_index = clusterList
+            .map((data, index) => ({ index: index + 1, data }))
+            .filter(({ data }) => data.name.toLowerCase().includes(arg));
 
         if (matches_with_index.length === 0) {
             msg.addMessage(MessageSegment.text("很抱歉，未找到匹配的节点"));
-        } else if(matches_with_index.length > 0 && matches_with_index.length <= 5) {
+        } else if (matches_with_index.length > 0 && matches_with_index.length <= 5) {
             for (let i = 0; i < matches_with_index.length; i++) {
                 msg.addMessage(MessageSegment.text(formatNodeInfo(matches_with_index[i].index, matches_with_index[i].data)))
                 if (i != matches_with_index.length - 1) {
                     msg.addMessage(MessageSegment.text("\n"))
                 }
             }
-        } else if (matches_with_index.length > 5 && matches_with_index.length <= 10) {
+        } else if (matches_with_index.length > 5 && matches_with_index.length <= 10 || args.includes("-f") || args.includes("-F")) {
             for (let i = 0; i < matches_with_index.length; i++) {
                 msg.addMessage(MessageSegment.text(simpleFormatNodeInfo(matches_with_index[i].index, matches_with_index[i].data)))
                 if (i != matches_with_index.length - 1) {
@@ -149,48 +167,107 @@ async function brrs_handle(args: Array<string>, handler: Handler, msg: Message, 
             msg.addMessage(MessageSegment.text(`搜索结果包含 ${matches_with_index.length} 条，请改用更加精确的参数搜索`));
         }
     }
-    msg.addMessage(MessageSegment.text(`\n请求时间: ${new Date().toLocaleString()}`))
+    msg.addMessage(MessageSegment.text(`\n请求时间: ${requestTime.toLocaleString()}`))
     handler.finish(msg);
 }
 
-async function buan_handle(args: Array<string>, handler: Handler, msg: Message, event: BotMessageEvent) {
+async function bors_handle(args: Array<string>, handler: HandlerClass, msg: MessageClass, event: BotMessageEvent) {
     msg.addMessage(MessageSegment.reply(event.message_id));
-    msg.addMessage(MessageSegment.text("OpenBMCLAPI 面板数据 v0.0.1\n"));
-    if (args.length == 0) {
+    msg.addMessage(MessageSegment.text("OBA Status Bot v1.0.1\n"));
+    if (args.length == 0 || args[0].trim() == "") { // 没有参数或参数为纯空格
         msg.addMessage(MessageSegment.text("缺少参数，请输入节点管理者用户名"));
     } else {
         const arg: string = args[0].toLowerCase();
 
-        const matches_with_index = clusterList
-            .map((data, index) => ({ index: index + 1, data }))
-            .filter(({ data }) => data.user.name.toLowerCase().includes(arg));
+        // 过滤用户
+        let matches_users: any[] = [];
 
-        if (matches_with_index.length === 0) {
-            msg.addMessage(MessageSegment.text("很抱歉，未找到匹配的节点"));
-        } else {
-            let total_bytes: number = 0;
-            let total_hits: number = 0;
-            for (let i = 0; i < matches_with_index.length; i++) {
-                if (matches_with_index[i].data.metric == null) {
-                    matches_with_index[i].data.metric = {
-                        bytes: 0,
-                        hits: 0
-                    } 
-                }
-                total_bytes += matches_with_index[i].data.metric.bytes;
-                total_hits += matches_with_index[i].data.metric.hits;
+        for (let i = 0; i < clusterList.length; i++) {
+            if (clusterList[i].user.name.toLowerCase().includes(arg) && matches_users.includes(clusterList[i].user.name) == false) {
+                matches_users.push(clusterList[i].user.name);
             }
-            msg.addMessage(MessageSegment.text(`所有者: ${args[0]} | 节点数量: ${matches_with_index.length}\n当日总流量: ${formatUnits(total_bytes)} | 当日请求数: ${formatCommas(total_hits)}`));
+        }
+
+        if (matches_users.length === 0) {
+            msg.addMessage(MessageSegment.text("很抱歉，未找到匹配的拥有者"));
+        } else if (matches_users.length > 1) {
+            msg.addMessage(MessageSegment.text("查询到多个节点拥有者，请使用更精确的名称：\n"));
+            for (let i = 0; i < matches_users.length; i++) {
+                msg.addMessage(MessageSegment.text(`${matches_users[i]}${i != matches_users.length - 1 ? ", " : ""}`));
+            }
+        } else {
+            let matches_with_index: any[] = [];
+
+            for (let i = 0; i < clusterList.length; i++) {
+                if (clusterList[i].user.name.toLowerCase().includes(matches_users[0].toLowerCase())) {
+                    matches_with_index.push({ index: i + 1, data: clusterList[i] });
+                }
+            }
+
+            if (matches_with_index.length === 0) {
+                msg.addMessage(MessageSegment.text("很抱歉，未找到匹配的节点"));
+            } else {
+                const { total_bytes, total_hits } = summaryNode(matches_with_index.map(({ index, data }) => index), matches_with_index.map(({ index, data }) => data));
+
+                msg.addMessage(MessageSegment.text(`拥有者: ${matches_users[0]} | 流量占比: ${(total_bytes / dashboard.bytes * 100).toFixed(4)}%\n`));
+
+                for (let i = 0; i < matches_with_index.length; i++) {
+                    msg.addMessage(MessageSegment.text(simpleFormatNodeInfo(matches_with_index[i].index, matches_with_index[i].data)))
+                    if (i != matches_with_index.length - 1) {
+                        msg.addMessage(MessageSegment.text("\n"))
+                    }
+                }
+
+                msg.addMessage(MessageSegment.text(`\n当日总流量: ${formatUnits(total_bytes)} | 当日请求数: ${formatCommas(total_hits)}`));
+            }
         }
     }
-    msg.addMessage(MessageSegment.text(`\n请求时间: ${new Date().toLocaleString()}`))
+    msg.addMessage(MessageSegment.text(`\n请求时间: ${requestTime.toLocaleString()}`))
+    handler.finish(msg);
+}
+
+async function brcs_handle(args: Array<string>, handler: HandlerClass, msg: MessageClass, event: BotMessageEvent) {
+    msg.addMessage(MessageSegment.reply(event.message_id));
+    msg.addMessage(MessageSegment.text("OBA Status Bot v1.0.1\n"));
+
+    let user_list: any[] = [];
+
+    for (let i = 0; i < clusterList.length; i++) {
+        if (user_list.includes(clusterList[i].user.name) == false) {
+            user_list.push(clusterList[i].user.name);
+        }
+    }
+
+    if (user_list.length === 0) {
+        msg.addMessage(MessageSegment.text("很抱歉，未找到任何拥有者"));
+    } else {
+        let user_rank: any[] = [];
+        for (let i = 0; i < user_list.length; i++) {
+            const matches_with_index = clusterList
+                .map((data, index) => ({ index: index + 1, data }))
+                .filter(({ data }) => data.user.name == user_list[i]);
+
+            const { total_bytes, total_hits } = summaryNode(matches_with_index.map(({ index, data }) => index), matches_with_index.map(({ index, data }) => data));
+
+            user_rank.push({ name: user_list[i], total_bytes, total_hits, nodes: matches_with_index.length });
+        }
+
+        user_rank.sort((a, b) => b.total_bytes - a.total_bytes);
+
+        for (let i = 0; i < user_rank.length; i++) {
+            msg.addMessage(MessageSegment.text(`${i + 1} | ${user_rank[i].name} | 流量占比: ${(user_rank[i].total_bytes / dashboard.bytes * 100).toFixed(4)}% | 节点数: ${user_rank[i].nodes}
+当日总请求数: ${formatCommas(user_rank[i].total_hits)} | 当日总流量: ${formatUnits(user_rank[i].total_bytes)}${i != user_rank.length - 1 ? "\n" : ""}`));
+        }
+    }
+    msg.addMessage(MessageSegment.text(`\n请求时间: ${requestTime.toLocaleString()}`))
     handler.finish(msg);
 }
 
 export function init(bot: Bot) {
-    bot.command("bmcl", "查询 OpenBMCLAPI 面板数据", bmcl_handle);
+    bot.command("bmcl", "获取 OpenBMCLAPI 当前数据", bmcl_handle);
     bot.command("brrs", "查询 OpenBMCLAPI 某个节点的信息", brrs_handle);
-    bot.command("buan", "查询某个用户所有节点的统计", buan_handle);
+    bot.command("bors", "查询某个用户名下所有节点的统计", bors_handle);
+    bot.command("brcs", "查询所有用户名下所有节点的统计", brcs_handle);
     fetchData(config.cookies);
 
     setInterval(() => {
